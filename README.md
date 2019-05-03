@@ -7,4 +7,7 @@ Stephen Grider's Node With React is GREAT. He goes into great detail how to buil
 Becuase I'm going through the entire course again, preparing this walk though, it is not the complete course as of now. New sections will be added about once a week. I have tried to keep the code condensed yet readable. At the end of each major section I have added the complete files and code in markdown that you should have up to that point. I have not added any styles or Materialize to the project giving you a little more freedom in deciding how the project should look. 
 
 ### Next steps
-After the entire course has been transcribed to just the code sections I will have to go back check for typos and errors. In the meantime feel free to clone or fork this repo. To contribute just open an issue and create a pull request if you can fix the issue. 
+After the entire course has been transcribed to just the code sections I will have to go back check for typos and errors. In the meantime feel free to clone or fork this repo.
+
+### Contributing
+To contribute just open an issue and create a pull request if you can fix the issue. Issues that should be pretty easy to spot will be typos either in the instruction or in the code. There will also be more difficult issues like missing steps or stops not being clear. If you find them please consider helping me fix them. Thank You!
