@@ -445,6 +445,9 @@ passport.deserializeUser((id, done)=> {
 const cookieSession = require('cookie-session');
 const passport = require('passport');
 ```
+##  Note 
+####  we will be using several middlewares through out the project.
+*  express uses `app.use()` which takes an argument to set up middlwares.When you see app.use we are just wiring up middleware
 
 * Now we tell Express to use cookie session using `app.use()`, cookie-session takes a configuration object as an argument. The object has two properties. maxAge and keys. maxAge sets the expiration date of the cookie in milli seconds. Keys is a decription key that we are going to store in our /config/keys.js file like we have stored all our other secrets. keys value must be an array even if its just one key that you decide to use. 
 
@@ -1301,4 +1304,377 @@ export default connect(mapStateToProps)(Header);
 ```
 
 * At this point all should be well with the world 
+
+# Setting Up Stripe With Node For Payments
+
+### 1. Go to stripe.com and sign up to create an acoount. 
+
+*  Create a new account for the app you are building. 
+*  This is different than signing up. Ih happens after you sign up on the top left of the stripe dashboard
+*  Click on developers on the left panel and click on API to reveal your keys.
+
+### 2. Install React helper in your Client directory and put your keys in the right places
+
+*  `npm install --save react-stripe-checkout`
+*  Put keys in server. MAKE SURE KEY NAMES ARE SPELLED CORRECTLY 
+
+```json
+// /server/config/dev.js
+module.exports = {  
+  stripePublishableKey: "pk_test_Ieasdflkjas;ldfj;alsdjf;lasjdf",
+  stripeSecretKey: "sk_test_al;sdjfoiwejflasjdl;kandvoiawjef"
+}
+```
+
+```json
+// /server/config/prod.js
+module.exports ={
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY
+  }
+```
+  
+### 3. Add environment keys to Heroku
+
+* go to heroku dashboard click setting and reveal config variables. 
+* add `STRIPE_PUBLISHABLE_KEY` and `STRIPE_SECRET_KEY`
+
+### 4. Secret Keys on the React side using .env
+* The client side only cares about the publishable key.
+ With create react app our project can consume variables that were declared in the environment as if they were
+ declared locally in our JS file. By Default we have `NODE_ENV` defined for us and any other Env variables starting with
+ `REACT_APP_`
+ 
+ * Create `.env.development`  and `.env.production` files in the root of our client directory
+ * add your public key to both files like so
+ 
+ `REACT_APP_STRIPE_KEY=pk_test_aksdfaoerkjasdf8aefoij`
+* Test that you can get your key by putting a console.log at the end of your index.js component
+ `console.log("STRIPE KEY IS ", process.env.REACT_APP_STRIPE_KEY)`
+ you should be able to verify that you have access to you variables. 
+ 
+ 
+ 
+### 5. Create a new component to configure react-stripe-checkout
+*  Create a `Payments.js` file in your components directory
+*  We are making our component that wraps the stripe-checkout component and pass it our own config options.
+
+
+
+```jsx
+// /server/client/components/Payments.js
+import React, { Component } from 'react';
+// Our component Payments just wraps StripeCheckout with our configuration options like amount token and our stripe key
+import StripeCheckout from 'react-stripe-checkout';   
+
+class Payments extends Component{
+    render() {
+        return (
+        // amount is the amount in U.S. cents.
+        // The token is expectin to receive a callback function
+        // It will be called after we receive auth token from stripe and the token will be passed as an argument to the function
+            <StripeCheckout
+                amount={500}
+                token={token => console.log(token)}
+                stripeKey={process.env.REACT_APP_STRIPE_KEY}
+            />
+        )
+    }
+}
+
+export default Payments;
+
+```
+
+### 6. Display our payments component
+
+*  import our payments component
+*  display our component if the user is logged in. 
+*  In the default case of the switch statement. Add another li for the Payment component
+*  Remove the fragments `<>` and wrap the li's in an array instead. 
+*  Testing it should now display the Pay With Card button when logged in.
+
+```jsx
+// /server/client/components/Header.js
+// ..
+import Payments from './Payments'
+
+class Header extends Component {
+
+  renderContent() {
+    switch(this.props.auth){
+     // ..
+      default: 
+      return (
+        [
+          <li key="1"><Payments/></li>,
+          <li key="2">
+            <a href="/api/logout">Logout</a>
+          </li>
+        ]
+      );
+    }
+    // ..
+  }
+  
+  // ..
+
+}
+```
+* You should now be able to console.log the token from earlier. Use a dummy card 4242 4242 4242 4242 to test transaction
+
+### 7. Customize the text of the stripe payment pop up and the prebuilt button
+*  In the payments component add more configuration to the StripeCheckout component
+*  name gives the pop up a header 
+*  description gives more information to the user of what they are paying for 
+
+```jsx
+// /server/client/components/Payments.js
+// ..
+      <StripeCheckout
+          name="Emaily"
+          description="$5 gets you 5 email credits."
+          amount={500}
+          token={token => console.log(token)}
+          stripeKey={process.env.REACT_APP_STRIPE_KEY}
+      />
+```
+
+*  To change the hiddeous Pay With Stripe button just pass a child component to the StripeCheckout Component.
+```jsx
+// /server/client/components/Payments.js
+// ..
+      <StripeCheckout
+          // ..
+      > <button>Add Credits</button> </StripeCheckout>
+```
+
+### 8. Take the token and send it to our Express server to follow up with Stripe.
+*   Whenever we want to send something to our backend api with Redux we will have to send it using an action creator.
+*   Create a new action. This action will async so use the same general type of action that we used for fetchUser
+
+```javascript 
+// /server/client/src/actions/index.js
+//.
+
+export const handleToken = (token) => async dispatch => {
+//this is body of our real action creator. We don't have a route handler on the backend yet so lets make up the route.
+// as the second argument pass the token that we got back from stripe.
+  const res = await axios.post('/api/stripe', token)
+  
+// in the response back what type of action are we going to dispatch? 
+// We are getting the same user model therefore we can use the same dispatch as before. 
+dispatch({type: FETCH_USER, payload: res.data})
+}
+```
+
+* Next we need to make sure our action creator gets called whenever we get a token from the StripeCheckout (Payments.js)
+* import the connect helper and all of the action creators into the Payments.js component
+* Use the props that we get from connect for the action  handleToken that we just built above. 
+
+```jsx
+// /server/client/src/components/Payments.js
+import{ connect } from 'react-redux';
+import * as actions from '../actions/index' ;
+
+// .. 
+//this is an attribute or prop of StripeCheckout
+    token={token => this.props.hanldeToken(token)}
+ 
+ // ..
+ 
+ export default connect(null, actions)(Payments);
+
+```
+
+*  At this point we should be able to see the request being made on the XHR of the Nework tab in our dev tools.  
+
+## 9. Set up route handler to handle /api/stripe
+
+* Watch post request to /api/stripe
+* Create a new file to handle payments and billing called `billingRoutes.js` in our routes folder.  
+* put a `module.exports = (app) =>{}` inside of that of file with a `app.post('api/stripe')` handler 
+* Jump to `index.js` and require the new route in the same place where we required authRoutes `require("./routes/authRoutes")(app)`
+
+```javascript
+// /server/routes/billingRoutes.js
+module.exports = (app) =>{
+  app.post('/api/stripe', (req, res) =>{
+  //our token will be available in here. 
+  })
+}
+```
+
+```javascript
+// /server/index.js
+// ..
+require("./routes/authRoutes")(app)
+require("./routes/billingRoutes")(app)
+
+//..
+```
+*  On the backend we are going to use some node middleware created specifically for stripe
+*  Install stripe package on the server directory `npm install --save stripe` 
+*  If you need to look at the documentation for stripe to charge a card you can find it at [Stripe API Reference](https://stripe.com/docs/api) 
+
+*  Now we're going to set up the stripe library on our billingRoutes.js 
+*  First import stripe from stripe. The stripe documentation shows that we need to call a second function on the require function that will take our secret key as an argument.
+*  Becuase we need the key we will also need to require our `keys.js` 
+
+```javascript
+// /server/routes/billingRoutes.js
+const keys = require('../config.keys');
+const stripe = require('stripe')(keys.stripeSecretKey)
+module.exports = (app) =>{
+  app.post('/api/stripe', (req, res) =>{
+  //our token will be available in here. 
+  })
+}
+```
+#### body parser
+*  Install the `body-parser` npm package in your server directory  so that we can parse the info coming into to the post request from our front end. 
+*  This will make our incoming request available under `req.body`
+* `npm install --save body-parser` `
+*  `const bodyParser = require("body-parser")` and `app.use(bodyParser.json())` with your other middlewares in your `index.js`
+*  
+```javascript
+// /server/index.js
+const bodyParser = require("body-parser")
+
+// .. middlewares
+app.use(bodyParser.json())
+```
+*  `console.log(req.body)` to make sure everything is coming in okay into /api/stripe
+
+```javascript
+  app.post('/api/stripe', (req, res) =>{
+    console.log(req.body)
+  })
+```
+
+* At this point if that console log spits out some card info we are ready to charge the card if not trouble shoot 
+* Look for typos, in app.post, make sure you're using middlewares and that you installed all the packages. 
+
+```json
+// sample of console.log
+{ id: 'tok_1EavJCFKo0M547C1brawQETC',
+  object: 'token',
+  card:
+    { id: 'card_1EavJCFKo0M547C1NVVr6Crr',
+      object: 'card',
+      address_city: null,
+      //..
+    }
+}
+      
+```
+
+*  finish building route
+
+```javascript
+// /server/api/stripe.js
+const keys = require("../config/keys");
+const stripe = require("stripe")(keys.stripeSecretKey);
+
+module.exports = (app) => {
+    app.post("/api/stripe", (req, res) => {
+        stripe.charges.create({
+            amount: 500,  // amount we are charging
+            currency: "usd",
+            description: "5 email credits for $5", //can be anything
+            source: req.body.id // this is our authorization from the front end.
+        })
+    });
+};
+```
+### 9 Add credits to a users account (our backend)
+*  Add a new credit attritube/property to our User model. Default it to 0
+
+```javascript 
+// /server/models.User.js
+const userSchema = new Schema({
+    googleId: String,
+    credits: {type: Number, default: 0}
+});
+```
+
+* Add .then new async await to get back  a charge object from our `/api/stripe` route that we we will use to add credits to our users account. 
+* Here we I am console logging the charge and updating the user model we don't need to console log but you might want to do use the charge object for other for other configuration or validation
+* Add 5 credit to the user using `req.user` supplied to us by passport and save the user
+* Finally send back the user object. Notice we use a new user object equal to what mongo returns from .save() since req.user might now be stale. 
+* Test by going to the network tab XHR and see if the user object comes back with some credits after going through the flow.  
+
+```javascript 
+// /server/api/stripe.js
+   app.post("/api/stripe", async (req, res) => {
+    // ..
+        })
+        console.log(charge)
+        req.user.credits += 5
+        const user = await req.user.save()
+        res.send(user)
+        
+    });
+```
+
+### 10.  Add some validation to make sure that the user is logged in so no one hits this endpoing and goes through the flow with out being logged in. 
+*  We will use route specific middleware 
+*  Create a new `middlewares` directory at the server directory and add a file requireLogin.js
+```javascript 
+// /server/middlewares/requireLogin.js
+
+module.exports = (req, res, next) => {
+  if (!req.user) {
+    // if the user is not logged in stop the process
+    return res.status(401).send({ error: "You must log in!" });
+  }
+
+  next(); // if the user is logged in just go to the next middleware
+};
+```
+
+*  require the middleware in the route that we want to use it. In our case for now we only want to use it in the `/api/stripe` route
+
+```javascript 
+// /server/api/stripe.js
+const requireLogin = require('../middlewares/requireLogin')
+
+module.exports = (app) => {
+    app.post("/api/stripe", requireLogin, async (req, res) => {
+        const charge = await stripe.charges.create({
+            amount: 500,
+            // ..
+        
+    });
+```
+
+### 11. Displaying and updating the credits
+
+* Add another `<li>` in our Header component 
+* `this.props.auth` is available in the header so all we have to use is `this.props.auth.credits` to display the credits.
+
+```javascript
+class Header extends Component {
+
+  renderContent() {
+    switch(this.props.auth){
+      // ..
+      default: 
+      return (
+        [
+          <li key="1"><Payments/></li>,
+          <li key="2"> Credits: {this.props.auth.credits}</li>,
+          <li key="3">
+            <a href="/api/logout">Logout</a>
+          </li>
+        ]
+      );
+    }
+  }
+  // ..
+}
+
+```
+
+
 
